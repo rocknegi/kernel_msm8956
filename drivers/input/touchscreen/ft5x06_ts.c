@@ -623,9 +623,6 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *dev_id)
 			x += 5000;
 #endif
 
-		if (y == 2100 && data->keypad_mode)
-			break;
-
 		input_mt_slot(ip_dev, id);
 		if (status == FT_TOUCH_DOWN || status == FT_TOUCH_CONTACT) {
 			input_mt_report_slot_state(ip_dev, MT_TOOL_FINGER, 1);
