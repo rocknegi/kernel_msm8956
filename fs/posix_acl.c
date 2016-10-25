@@ -420,6 +420,7 @@ EXPORT_SYMBOL(posix_acl_create);
  * Called from set_acl inode operations.
  */
 int posix_acl_update_mode(struct inode *inode, umode_t *mode_p,
+
 			  struct posix_acl **acl)
 {
 	umode_t mode = inode->i_mode;
@@ -435,6 +436,7 @@ int posix_acl_update_mode(struct inode *inode, umode_t *mode_p,
 		mode &= ~S_ISGID;
 	*mode_p = mode;
 	return 0;
+
 }
 EXPORT_SYMBOL(posix_acl_update_mode);
 
