@@ -1450,7 +1450,9 @@ clock_set:
 			goto ret;
 		}
 		timeout--;
+
 		udelay(1);
+
 	}
 
 	clk |= SDHCI_CLOCK_CARD_EN;
