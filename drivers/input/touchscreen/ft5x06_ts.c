@@ -583,23 +583,6 @@ static irqreturn_t ft5x06_ts_interrupt(int irq, void *dev_id)
 	}
 #endif
 
-#if defined(FT_CHARGING_STATUS)
-
-	if ((FG_charger_status == 1  || FG_charger_status == 4) && (charging_flag == 0)) {
-		charging_flag = 1;
-		ft5x0x_write_reg(data->client, 0x8B, 0x01);
-	} else {
-		if ((FG_charger_status != 1) && (FG_charger_status != 4) && (charging_flag == 1)) {
-			charging_flag = 0;
-			ft5x0x_write_reg(data->client, 0x8B, 0x00);
-		 }
-	}
-
-
-#endif
-
-
-
 	if (!data) {
 		pr_err("%s: Invalid data\n", __func__);
 		return IRQ_HANDLED;
@@ -1061,15 +1044,6 @@ static int ft5x06_ts_resume(struct device *dev)
 	input_mt_report_pointer_emulation(data->input_dev, false);
 	input_sync(data->input_dev);
 
-#if defined(FT_CHARGING_STATUS)
-
-	if (FG_charger_status == 1 || FG_charger_status == 4)
-		charging_flag = 0;
-	else
-		charging_flag = 1;
-	printk("ft5x06_ts_resume  FG_charger_status=%d\n", FG_charger_status);
-	printk("ft5x06_ts_resume  charging_flag=%d\n", charging_flag);
-#endif
 	return 0;
 }
 
