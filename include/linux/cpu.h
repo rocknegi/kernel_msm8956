@@ -157,7 +157,7 @@ extern void __unregister_cpu_notifier(struct notifier_block *nb);
 #ifndef MODULE
 extern int register_cpu_notifier(struct notifier_block *nb);
 extern int __register_cpu_notifier(struct notifier_block *nb);
-#else
+
 
 
 #else /* #if defined(CONFIG_HOTPLUG_CPU) || !defined(MODULE) */
