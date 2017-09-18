@@ -896,7 +896,12 @@ static int l2cap_sock_shutdown(struct socket *sock, int how)
 			lock_sock(sk);
 		}
 
-		sk->sk_shutdown = SHUTDOWN_MASK;
+
+		l2cap_pi(sk)->conf_state |= L2CAP_CONF_REQ_SENT;
+		l2cap_send_cmd(conn, l2cap_get_ident(conn), L2CAP_CONF_REQ,
+				l2cap_build_conf_req(sk, buf, sizeof(buf)), buf);
+		l2cap_pi(sk)->num_conf_req++;
+
 
 		release_sock(sk);
 		l2cap_chan_close(chan, 0);

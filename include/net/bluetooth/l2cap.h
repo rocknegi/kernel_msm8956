@@ -799,7 +799,11 @@ int l2cap_init_sockets(void);
 void l2cap_cleanup_sockets(void);
 bool l2cap_is_socket(struct socket *sock);
 
-void __l2cap_connect_rsp_defer(struct l2cap_chan *chan);
+
+u8 l2cap_get_ident(struct l2cap_conn *conn);
+void l2cap_send_cmd(struct l2cap_conn *conn, u8 ident, u8 code, u16 len, void *data);
+int l2cap_build_conf_req(struct sock *sk, void *data, size_t data_size);
+
 int __l2cap_wait_ack(struct sock *sk);
 
 int l2cap_add_psm(struct l2cap_chan *chan, bdaddr_t *src, __le16 psm);
