@@ -454,3 +454,4 @@ void sa1110_mb_enable(void)
 
 	local_irq_restore(flags);
 }
+

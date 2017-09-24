@@ -28,6 +28,7 @@
 #include <linux/slab.h>
 #include <linux/syscore_ops.h>
 #include <linux/tick.h>
+#include <linux/pm_opp.h>
 #include <trace/events/power.h>
 
 /**
@@ -501,9 +502,6 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 	int ret;
 	char	str_governor[16];
 	struct cpufreq_policy new_policy;
-	char *envp[3];
-	char buf1[64];
-	char buf2[64];
 
 	ret = cpufreq_get_policy(&new_policy, policy->cpu);
 	if (ret)
@@ -523,13 +521,6 @@ static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 	policy->user_policy.governor = policy->governor;
 
 	sysfs_notify(&policy->kobj, NULL, "scaling_governor");
-
-	snprintf(buf1, sizeof(buf1), "GOV=%s", policy->governor->name);
-	snprintf(buf2, sizeof(buf2), "CPU=%u", policy->cpu);
-	envp[0] = buf1;
-	envp[1] = buf2;
-	envp[2] = NULL;
-	kobject_uevent_env(cpufreq_global_kobject, KOBJ_ADD, envp);
 
 	if (ret)
 		return ret;
@@ -645,6 +636,36 @@ static ssize_t show_bios_limit(struct cpufreq_policy *policy, char *buf)
 	return sprintf(buf, "%u\n", policy->cpuinfo.max_freq);
 }
 
+#ifdef CONFIG_MACH_XIAOMI_KENZO
+extern ssize_t cpu_clock_get_vdd(char *buf);
+extern ssize_t cpu_clock_set_vdd(const char *buf, size_t count);
+
+static ssize_t show_UV_mV_table(struct cpufreq_policy *policy, char *buf)
+{
+	return cpu_clock_get_vdd(buf);
+}
+
+static ssize_t store_UV_mV_table(struct cpufreq_policy *policy,
+	const char *buf, size_t count)
+{
+	return cpu_clock_set_vdd(buf, count);
+}
+
+extern ssize_t gpu_clock_get_vdd(char *buf);
+extern ssize_t gpu_clock_set_vdd(const char *buf, size_t count);
+
+static ssize_t show_GPU_mV_table(struct cpufreq_policy *policy, char *buf)
+{
+	return gpu_clock_get_vdd(buf);
+}
+
+static ssize_t store_GPU_mV_table(struct cpufreq_policy *policy,
+	const char *buf, size_t count)
+{
+	return gpu_clock_set_vdd(buf, count);
+}
+#endif
+
 cpufreq_freq_attr_ro_perm(cpuinfo_cur_freq, 0400);
 cpufreq_freq_attr_ro(cpuinfo_min_freq);
 cpufreq_freq_attr_ro(cpuinfo_max_freq);
@@ -659,6 +680,10 @@ cpufreq_freq_attr_rw(scaling_min_freq);
 cpufreq_freq_attr_rw(scaling_max_freq);
 cpufreq_freq_attr_rw(scaling_governor);
 cpufreq_freq_attr_rw(scaling_setspeed);
+#ifdef CONFIG_MACH_XIAOMI_KENZO
+cpufreq_freq_attr_rw(UV_mV_table);
+cpufreq_freq_attr_rw(GPU_mV_table);
+#endif
 
 static struct attribute *default_attrs[] = {
 	&cpuinfo_min_freq.attr,
@@ -672,6 +697,10 @@ static struct attribute *default_attrs[] = {
 	&scaling_driver.attr,
 	&scaling_available_governors.attr,
 	&scaling_setspeed.attr,
+#ifdef CONFIG_MACH_XIAOMI_KENZO
+	&UV_mV_table.attr,
+	&GPU_mV_table.attr,
+#endif
 	NULL
 };
 
@@ -1058,17 +1087,15 @@ static int __cpufreq_add_dev(struct device *dev, struct subsys_interface *sif,
 	read_unlock_irqrestore(&cpufreq_driver_lock, flags);
 #endif
 
-	/*
-	 * Restore the saved policy when doing light-weight init and fall back
-	 * to the full init if that fails.
-	 */
-	policy = frozen ? cpufreq_policy_restore(cpu) : NULL;
-	if (!policy) {
-		frozen = false;
+	if (frozen)
+		/* Restore the saved policy when doing light-weight init */
+		policy = cpufreq_policy_restore(cpu);
+	else
 		policy = cpufreq_policy_alloc();
-		if (!policy)
-			goto nomem_out;
-	}
+
+	if (!policy)
+		goto nomem_out;
+
 
 	/*
 	 * In the resume path, since we restore a saved policy, the assignment
@@ -1181,11 +1208,8 @@ err_get_freq:
 	if (cpufreq_driver->exit)
 		cpufreq_driver->exit(policy);
 err_set_policy_cpu:
-	if (frozen) {
-		/* Do not leave stale fallback data behind. */
-		per_cpu(cpufreq_cpu_data_fallback, cpu) = NULL;
+	if (frozen)
 		cpufreq_policy_put_kobj(policy);
-	}
 	cpufreq_policy_free(policy);
 
 nomem_out:
@@ -1310,8 +1334,6 @@ static int __cpufreq_remove_dev_prepare(struct device *dev,
 						__func__, new_cpu, cpu);
 			}
 		}
-	} else if (cpufreq_driver->stop_cpu && cpufreq_driver->setpolicy) {
-		cpufreq_driver->stop_cpu(policy);
 	}
 
 	return 0;
@@ -2142,11 +2164,6 @@ int cpufreq_update_policy(unsigned int cpu)
 	 */
 	if (cpufreq_driver->get) {
 		new_policy.cur = cpufreq_driver->get(cpu);
-		if (WARN_ON(!new_policy.cur)) {
-			ret = -EIO;
-			goto no_policy;
-		}
-
 		if (!policy->cur) {
 			pr_debug("Driver did not initialize current freq");
 			policy->cur = new_policy.cur;
@@ -2180,6 +2197,7 @@ static int cpufreq_cpu_callback(struct notifier_block *nfb,
 		switch (action & ~CPU_TASKS_FROZEN) {
 		case CPU_ONLINE:
 			__cpufreq_add_dev(dev, NULL, frozen);
+			cpufreq_update_policy(cpu);
 			break;
 
 		case CPU_DOWN_PREPARE:
@@ -2226,9 +2244,7 @@ int cpufreq_register_driver(struct cpufreq_driver *driver_data)
 
 	if (!driver_data || !driver_data->verify || !driver_data->init ||
 	    !(driver_data->setpolicy || driver_data->target_index ||
-		    driver_data->target) ||
-	     (driver_data->setpolicy && (driver_data->target_index ||
-		    driver_data->target)))
+		    driver_data->target))
 		return -EINVAL;
 
 	pr_debug("trying to register driver %s\n", driver_data->name);

@@ -29,7 +29,7 @@
 #define CYCLES_PER_MICRO_SEC_DEFAULT 4915
 #define CCI_MAX_DELAY 1000000
 
-#define CCI_TIMEOUT msecs_to_jiffies(100)
+#define CCI_TIMEOUT msecs_to_jiffies(500)
 
 /* TODO move this somewhere else */
 #define MSM_CCI_DRV_NAME "msm_cci"
@@ -512,7 +512,7 @@ static int32_t msm_cci_data_queue(struct cci_device *cci_dev,
 	uint32_t read_val = 0;
 	uint32_t reg_offset;
 	uint32_t val = 0;
-	uint32_t max_queue_size;
+	uint32_t max_queue_size, queue_size = 0;
 
 	if (i2c_cmd == NULL) {
 		pr_err("%s:%d Failed line\n", __func__,
@@ -521,7 +521,8 @@ static int32_t msm_cci_data_queue(struct cci_device *cci_dev,
 	}
 
 	if ((!cmd_size) || (cmd_size > CCI_I2C_MAX_WRITE)) {
-		pr_err("%s:%d Failed line\n", __func__, __LINE__);
+		pr_err("%s:%d failed: invalid cmd_size %d\n",
+			__func__, __LINE__, cmd_size);
 		return -EINVAL;
 	}
 
@@ -529,11 +530,13 @@ static int32_t msm_cci_data_queue(struct cci_device *cci_dev,
 		i2c_msg->addr_type, i2c_msg->data_type, cmd_size);
 
 	if (i2c_msg->addr_type >= MSM_CAMERA_I2C_ADDR_TYPE_MAX) {
-		pr_err("%s failed line %d\n", __func__, __LINE__);
+		pr_err("%s:%d failed: invalid addr_type 0x%X\n",
+			__func__, __LINE__, i2c_msg->addr_type);
 		return -EINVAL;
 	}
 	if (i2c_msg->data_type >= MSM_CAMERA_I2C_DATA_TYPE_MAX) {
-		pr_err("%s failed line %d\n", __func__, __LINE__);
+		pr_err("%s:%d failed: invalid data_type 0x%X\n",
+			__func__, __LINE__, i2c_msg->data_type);
 		return -EINVAL;
 	}
 	reg_offset = master * 0x200 + queue * 0x100;
@@ -557,6 +560,11 @@ static int32_t msm_cci_data_queue(struct cci_device *cci_dev,
 
 	max_queue_size = cci_dev->cci_i2c_queue_info[master][queue].
 			max_queue_size;
+
+	if (c_ctrl->cmd == MSM_CCI_I2C_WRITE_SEQ)
+		queue_size = max_queue_size;
+	else
+		queue_size = max_queue_size/2;
 	reg_addr = i2c_cmd->reg_addr;
 
 	if (sync_en == MSM_SYNC_ENABLE && cci_dev->valid_sync &&
@@ -587,8 +595,8 @@ static int32_t msm_cci_data_queue(struct cci_device *cci_dev,
 			CCI_I2C_M0_Q0_CUR_WORD_CNT_ADDR + reg_offset);
 		CDBG("%s line %d CUR_WORD_CNT_ADDR %d len %d max %d\n",
 			__func__, __LINE__, read_val, len, max_queue_size);
-		/* + 1 - space alocation for Report CMD*/
-		if ((read_val + len + 1) > max_queue_size/2) {
+		/* + 1 - space alocation for Report CMD */
+		if ((read_val + len + 1) > queue_size) {
 			if ((read_val + len + 1) > max_queue_size) {
 				rc = msm_cci_process_full_q(cci_dev,
 					master, queue);
@@ -1543,7 +1551,6 @@ static irqreturn_t msm_cci_irq(int irq_num, void *data)
 	irq = msm_camera_io_r_mb(cci_dev->base + CCI_IRQ_STATUS_0_ADDR);
 	msm_camera_io_w_mb(irq, cci_dev->base + CCI_IRQ_CLEAR_0_ADDR);
 	msm_camera_io_w_mb(0x1, cci_dev->base + CCI_IRQ_GLOBAL_CLEAR_CMD_ADDR);
-	msm_camera_io_w_mb(0x0, cci_dev->base + CCI_IRQ_GLOBAL_CLEAR_CMD_ADDR);
 	CDBG("%s CCI_I2C_M0_STATUS_ADDR = 0x%x\n", __func__, irq);
 	if (irq & CCI_IRQ_STATUS_0_RST_DONE_ACK_BMSK) {
 		if (cci_dev->cci_master_info[MASTER_0].reset_pending == TRUE) {

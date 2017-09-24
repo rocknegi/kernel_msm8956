@@ -6155,15 +6155,12 @@ static int __wlan_hdd_cfg80211_firmware_roaming(struct wiphy *wiphy,
     hddLog(VOS_TRACE_LEVEL_INFO, FL("isFwrRoamEnabled (%d)"), isFwrRoamEnabled);
 
     /* Parse and fetch bssid */
-    if (!tb[QCA_WLAN_VENDOR_ATTR_MAC_ADDR]) {
-        hddLog(VOS_TRACE_LEVEL_ERROR, FL("attr bss id failed"));
-        return -EINVAL;
-    }
-
-    memcpy(bssid, nla_data(
+    if (tb[QCA_WLAN_VENDOR_ATTR_MAC_ADDR]) {
+        memcpy(bssid, nla_data(
                 tb[QCA_WLAN_VENDOR_ATTR_MAC_ADDR]),
                 sizeof(bssid));
-    hddLog(VOS_TRACE_LEVEL_INFO, FL(MAC_ADDRESS_STR),MAC_ADDR_ARRAY(bssid));
+        hddLog(VOS_TRACE_LEVEL_INFO, FL(MAC_ADDRESS_STR),MAC_ADDR_ARRAY(bssid));
+    }
 
     //Update roaming
     status = sme_ConfigFwrRoaming((tHalHandle)(pHddCtx->hHal), isFwrRoamEnabled);

@@ -22,7 +22,7 @@
 	interrupt-parent = <&intc>;
 
 	chosen {
-		bootargs = "boot_cpus=0,1,2,3,4,5 sched_enable_hmp=1 sched_enable_power_aware=1";
+		bootargs = "sched_enable_hmp=1";
 	};
 
 	aliases {
@@ -824,6 +824,7 @@
 		qcom,bcl-enable;
 		qcom,bcl-framework-interface;
 		qcom,bcl-freq-control-list = <&CPU4 &CPU5 &CPU6 &CPU7>;
+		qcom,bcl-hotplug-list = <&CPU4 &CPU5 &CPU6 &CPU7>;
 		qcom,bcl-soc-hotplug-list = <&CPU4 &CPU5 &CPU6 &CPU7>;
 		qcom,ibat-monitor {
 			qcom,high-threshold-uamp = <4200000>;
@@ -915,6 +916,7 @@
 		interrupt-names = "hc_irq", "pwr_irq";
 
 		qcom,bus-width = <8>;
+		qcom,large-address-bus;
 
 		qcom,cpu-dma-latency-us = <60 340 900>;
 		qcom,cpu-affinity = "affine_cores";
@@ -959,6 +961,7 @@
 		interrupt-names = "hc_irq", "pwr_irq";
 
 		qcom,bus-width = <4>;
+		qcom,large-address-bus;
 
 		qcom,cpu-dma-latency-us = <701>;
 
@@ -991,6 +994,7 @@
 		reg-names = "hc_mem", "core_mem";
 
 		qcom,bus-width = <4>;
+		qcom,large-address-bus;
 		gpios = <&msm_gpio 44 0>, /* CLK */
 			<&msm_gpio 43 0>, /* CMD */
 			<&msm_gpio 42 0>, /* DATA0 */

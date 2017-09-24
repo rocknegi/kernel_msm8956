@@ -293,14 +293,14 @@
  * The minimum number of bits of entropy before we wake up a read on
  * /dev/random.  Should be enough to do a significant reseed.
  */
-static int random_read_wakeup_thresh = 512;
+static int random_read_wakeup_thresh = 64;
 
 /*
  * If the entropy count falls under this number of bits, then we
  * should wake up processes which are selecting or polling on write
  * access to /dev/random.
  */
-static int random_write_wakeup_thresh = 256;
+static int random_write_wakeup_thresh = 128;
 
 /*
  * When the input pool goes over trickle_thresh, start dropping most
@@ -668,6 +668,8 @@ void add_device_randomness(const void *buf, unsigned int size)
 }
 EXPORT_SYMBOL(add_device_randomness);
 
+static struct timer_rand_state input_timer_state;
+
 /*
  * This function adds entropy to the entropy "pool" by using timing
  * delays.  It uses the timer_rand_state structure to make an estimate
@@ -740,7 +742,16 @@ out:
 void add_input_randomness(unsigned int type, unsigned int code,
 				 unsigned int value)
 {
-	return;
+	static unsigned char last_value;
+
+	/* ignore autorepeat and the like */
+	if (value == last_value)
+		return;
+
+	DEBUG_ENT("input event\n");
+	last_value = value;
+	add_timer_randomness(&input_timer_state,
+			     (type << 4) ^ code ^ (code >> 4) ^ value);
 }
 EXPORT_SYMBOL_GPL(add_input_randomness);
 
@@ -1163,7 +1174,6 @@ void rand_initialize_disk(struct gendisk *disk)
 static ssize_t
 _random_read(int nonblock, char __user *buf, size_t nbytes)
 {
-
 	ssize_t n, retval = 0, count = 0;
 
 	if (nbytes == 0)
@@ -1216,7 +1226,6 @@ _random_read(int nonblock, char __user *buf, size_t nbytes)
 	}
 
 	return (count ? count : retval);
-
 }
 
 static ssize_t

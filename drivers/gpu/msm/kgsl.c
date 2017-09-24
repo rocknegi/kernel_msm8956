@@ -40,6 +40,7 @@
 #include "kgsl_trace.h"
 #include "kgsl_sync.h"
 #include "kgsl_compat.h"
+#include "kgsl_pool.h"
 
 #undef MODULE_PARAM_PREFIX
 #define MODULE_PARAM_PREFIX "kgsl."
@@ -2588,6 +2589,7 @@ long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 	struct kgsl_map_user_mem *param = data;
 	struct kgsl_mem_entry *entry = NULL;
 	struct kgsl_process_private *private = dev_priv->process_priv;
+	struct kgsl_mmu *mmu = &dev_priv->device->mmu;
 	unsigned int memtype;
 
 	/*
@@ -2597,7 +2599,7 @@ long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 
 	if (param->flags & KGSL_MEMFLAGS_SECURE) {
 		/* Log message and return if context protection isn't enabled */
-		if (!kgsl_mmu_is_secured(&dev_priv->device->mmu)) {
+		if (!kgsl_mmu_is_secured(mmu)) {
 			dev_WARN_ONCE(dev_priv->device->dev, 1,
 				"Secure buffer not supported");
 			return -EOPNOTSUPP;
@@ -2664,10 +2666,11 @@ long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 		goto error;
 
 	if ((param->flags & KGSL_MEMFLAGS_SECURE) &&
-		!IS_ALIGNED(entry->memdesc.size, SZ_1M)) {
+		(entry->memdesc.size & mmu->secure_align_mask)) {
 			KGSL_DRV_ERR(dev_priv->device,
-				"Secure buffer size %lld must be 1MB aligned",
-				entry->memdesc.size);
+				"Secure buffer size %lld not aligned to %x alignment",
+				entry->memdesc.size,
+				mmu->secure_align_mask + 1);
 		result = -EINVAL;
 		goto error_attach;
 	}
@@ -3080,7 +3083,7 @@ static struct kgsl_mem_entry *gpumem_alloc_entry(
 		mmapsize = size;
 
 	/* For now only allow allocations up to 4G */
-	if (size > UINT_MAX)
+	if (size == 0 || size > UINT_MAX)
 		return ERR_PTR(-EINVAL);
 
 	/* Only allow a mmap size that we can actually mmap */
@@ -4180,8 +4183,11 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 	if (status)
 		goto error_close_mmu;
 
+	/* Initialize the memory pools */
+	kgsl_init_page_pools(device->pdev);
+
 	status = kgsl_allocate_global(device, &device->memstore,
-		KGSL_MEMSTORE_SIZE, 0, 0);
+		KGSL_MEMSTORE_SIZE, 0, KGSL_MEMDESC_CONTIG);
 
 	if (status != 0) {
 		KGSL_DRV_ERR(device, "kgsl_allocate_global failed %d\n",
@@ -4223,8 +4229,8 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 				PM_QOS_DEFAULT_VALUE);
 	}
 
-
-	device->events_wq = create_workqueue("kgsl-events");
+	device->events_wq = alloc_workqueue("kgsl-events",
+		WQ_UNBOUND | WQ_MEM_RECLAIM, 0);
 
 	/* Initalize the snapshot engine */
 	kgsl_device_snapshot_init(device);
@@ -4255,6 +4261,8 @@ void kgsl_device_platform_remove(struct kgsl_device *device)
 	destroy_workqueue(device->events_wq);
 
 	kgsl_device_snapshot_close(device);
+
+	kgsl_exit_page_pools();
 
 	kgsl_pwrctrl_uninit_sysfs(device);
 
@@ -4309,6 +4317,8 @@ static void kgsl_core_exit(void)
 static int __init kgsl_core_init(void)
 {
 	int result = 0;
+	struct sched_param param = { .sched_priority = 2 };
+
 	/* alloc major and minor device numbers */
 	result = alloc_chrdev_region(&kgsl_driver.major, 0, KGSL_DEVICE_MAX,
 		"kgsl");
@@ -4369,6 +4379,18 @@ static int __init kgsl_core_init(void)
 	INIT_LIST_HEAD(&kgsl_driver.pagetable_list);
 
 	kgsl_mmu_set_mmutype(ksgl_mmu_type);
+
+	init_kthread_worker(&kgsl_driver.worker);
+
+	kgsl_driver.worker_thread = kthread_run(kthread_worker_fn,
+		&kgsl_driver.worker, "kgsl_worker_thread");
+
+	if (IS_ERR(kgsl_driver.worker_thread)) {
+		pr_err("unable to start kgsl thread\n");
+		goto err;
+	}
+
+	sched_setscheduler(kgsl_driver.worker_thread, SCHED_FIFO, &param);
 
 	kgsl_events_init();
 

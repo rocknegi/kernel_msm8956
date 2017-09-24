@@ -1,5 +1,4 @@
 /* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -123,9 +122,15 @@ static struct wcd_mbhc_config wcd_mbhc_cfg = {
 	.swap_gnd_mic = NULL,
 	.hs_ext_micbias = true,
 	.key_code[0] = KEY_MEDIA,
+#ifdef CONFIG_MACH_XIAOMI
 	.key_code[1] = BTN_1,
 	.key_code[2] = BTN_2,
 	.key_code[3] = 0,
+#else
+	.key_code[1] = KEY_VOICECOMMAND,
+	.key_code[2] = KEY_VOLUMEUP,
+	.key_code[3] = KEY_VOLUMEDOWN,
+#endif
 	.key_code[4] = 0,
 	.key_code[5] = 0,
 	.key_code[6] = 0,
@@ -182,7 +187,7 @@ static void *def_tasha_mbhc_cal(void)
 	}
 
 #define S(X, Y) ((WCD_MBHC_CAL_PLUG_TYPE_PTR(tasha_wcd_cal)->X) = (Y))
-	S(v_hs_max, 1700);
+	S(v_hs_max, 1500);
 #undef S
 #define S(X, Y) ((WCD_MBHC_CAL_BTN_DET_PTR(tasha_wcd_cal)->X) = (Y))
 	S(num_btn, WCD_MBHC_DEF_BUTTONS);
@@ -193,6 +198,7 @@ static void *def_tasha_mbhc_cal(void)
 		(sizeof(btn_cfg->_v_btn_low[0]) * btn_cfg->num_btn);
 
 	btn_high[0] = 75;
+#ifdef CONFIG_MACH_XIAOMI
 	btn_high[1] = 260;
 	btn_high[2] = 750;
 	btn_high[3] = 750;
@@ -200,6 +206,15 @@ static void *def_tasha_mbhc_cal(void)
 	btn_high[5] = 750;
 	btn_high[6] = 750;
 	btn_high[7] = 750;
+#else
+	btn_high[1] = 150;
+	btn_high[2] = 237;
+	btn_high[3] = 450;
+	btn_high[4] = 450;
+	btn_high[5] = 450;
+	btn_high[6] = 450;
+	btn_high[7] = 450;
+#endif
 
 	return tasha_wcd_cal;
 }

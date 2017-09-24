@@ -2143,6 +2143,8 @@ static void msm_otg_start_host(struct usb_otg *otg, int on)
 				motg->inputs, otg->phy->state);
 
 		wake_up(&motg->host_suspend_wait);
+		pm_runtime_disable(&hcd->self.root_hub->dev);
+		pm_runtime_barrier(&hcd->self.root_hub->dev);
 		usb_remove_hcd(hcd);
 
 		if (pdata->enable_axi_prefetch)
@@ -5552,10 +5554,10 @@ struct msm_otg_platform_data *msm_otg_dt_to_pdata(struct platform_device *pdev)
 #ifdef CONFIG_MACH_XIAOMI_KENZO
 	pdata->usbid_switch = of_get_named_gpio(node, "qcom,usbid-switch", 0);
 	if (pdata->usbid_switch < 0)
-			pr_debug("Macle usbid_switch is not available\n");
+		pr_debug("Macle usbid_switch is not available\n");
 	else {
-			gpio_request(pdata->usbid_switch, "USB_ID_SWITCH");
-			gpio_direction_output(pdata->usbid_switch, 1);
+		gpio_request(pdata->usbid_switch, "USB_ID_SWITCH");
+		gpio_direction_output(pdata->usbid_switch, 1);
 	}
 #endif
 

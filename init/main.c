@@ -102,10 +102,6 @@ static inline void mark_rodata_ro(void) { }
 extern void tc_init(void);
 #endif
 
-#ifdef CONFIG_MACH_XIAOMI_KENZO
-int kenzo_boardid = 2;
-#endif
-
 /*
  * Debug helper: via this flag we know that we are in 'early bootup code'
  * where only the boot processor is running with IRQ disabled.  This means
@@ -480,9 +476,6 @@ asmlinkage void __init start_kernel(void)
 {
 	char * command_line;
 	extern const struct kernel_param __start___param[], __stop___param[];
-#ifdef CONFIG_MACH_XIAOMI_KENZO
-	char * board_id_ptr;
-#endif
 
 	/*
 	 * Need to run as early as possible, to initialize the
@@ -520,13 +513,6 @@ asmlinkage void __init start_kernel(void)
 	page_alloc_init();
 
 	pr_notice("Kernel command line: %s\n", boot_command_line);
-
-#ifdef CONFIG_MACH_XIAOMI_KENZO
-	board_id_ptr = strstr(boot_command_line, "androidboot.boardID=");
-	if (board_id_ptr)
-		kenzo_boardid = simple_strtoul(&board_id_ptr[strlen("androidboot.boardID=")], NULL, 10);
-#endif
-
 	parse_early_param();
 	parse_args("Booting kernel", static_command_line, __start___param,
 		   __stop___param - __start___param,
@@ -711,7 +697,7 @@ int __init_or_module do_one_initcall(initcall_t fn)
 
 	if (preempt_count() != count) {
 		sprintf(msgbuf, "preemption imbalance ");
-		preempt_count() = count;
+		preempt_count_set(count);
 	}
 	if (irqs_disabled()) {
 		strlcat(msgbuf, "disabled interrupts ", sizeof(msgbuf));

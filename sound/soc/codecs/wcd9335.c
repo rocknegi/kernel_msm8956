@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -45,6 +44,7 @@
 #include "wcd9xxx-resmgr-v2.h"
 #include "wcdcal-hwdep.h"
 #include "wcd_cpe_core.h"
+
 
 #define TASHA_MAX_MICBIAS 4
 #define DAPM_MICBIAS1_STANDALONE "MIC BIAS1 Standalone"
@@ -873,7 +873,11 @@ int tasha_set_spkr_mode(struct snd_soc_codec *codec, int mode)
 }
 EXPORT_SYMBOL(tasha_set_spkr_mode);
 
+#ifdef CONFIG_MACH_XIAOMI
 static enum codec_variant codec_ver = WCD9326;
+#else
+static enum codec_variant codec_ver;
+#endif
 
 static void tasha_enable_sido_buck(struct snd_soc_codec *codec)
 {
@@ -1399,8 +1403,10 @@ static int tasha_micbias_control(struct snd_soc_codec *codec,
 		break;
 	case MICB_PULLUP_DISABLE:
 		tasha->pullup_ref[micb_index]--;
+#ifdef CONFIG_MACH_XIAOMI
 		if (tasha->pullup_ref[micb_index] < 0)
 			tasha->pullup_ref[micb_index] = 0;
+#endif
 		if ((tasha->pullup_ref[micb_index] == 0) &&
 		    (tasha->micb_ref[micb_index] == 0))
 			snd_soc_update_bits(codec, micb_reg, 0xC0, 0x00);
@@ -3896,7 +3902,6 @@ static int tasha_codec_enable_lineout_pa(struct snd_soc_dapm_widget *w,
 		if (tasha->spk_ext_pa_cb)
 			tasha->spk_ext_pa_cb(codec, true);
 #endif
-
 		tasha_codec_override(codec, CLS_AB, event);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
@@ -5300,10 +5305,6 @@ static int tasha_codec_enable_dec(struct snd_soc_dapm_widget *w,
 			      snd_soc_read(codec, tx_gain_ctl_reg));
 		break;
 	case SND_SOC_DAPM_PRE_PMD:
-		snd_soc_write(codec, WCD9335_MBHC_ZDET_RAMP_CTL, 0x83);
-		snd_soc_write(codec, WCD9335_MBHC_ZDET_RAMP_CTL, 0xA3);
-		snd_soc_write(codec, WCD9335_MBHC_ZDET_RAMP_CTL, 0x83);
-		snd_soc_write(codec, WCD9335_MBHC_ZDET_RAMP_CTL, 0x03);
 		snd_soc_update_bits(codec, tx_vol_ctl_reg, 0x10, 0x10);
 		snd_soc_update_bits(codec, dec_cfg_reg, 0x08, 0x00);
 		cancel_delayed_work_sync(&tasha->tx_hpf_work[decimator].dwork);

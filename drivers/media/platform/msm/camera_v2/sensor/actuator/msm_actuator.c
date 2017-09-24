@@ -1,5 +1,4 @@
 /* Copyright (c) 2011-2017, The Linux Foundation. All rights reserved.
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -27,9 +26,9 @@ DEFINE_MSM_MUTEX(msm_actuator_mutex);
 #define CDBG(fmt, args...) pr_debug(fmt, ##args)
 #endif
 
-#define PARK_LENS_LONG_STEP 3
-#define PARK_LENS_MID_STEP 2
-#define PARK_LENS_SMALL_STEP 1
+#define PARK_LENS_LONG_STEP 7
+#define PARK_LENS_MID_STEP 5
+#define PARK_LENS_SMALL_STEP 3
 #define MAX_QVALUE 4096
 
 static struct v4l2_file_operations msm_actuator_v4l2_subdev_fops;
@@ -148,6 +147,11 @@ static void msm_actuator_parse_i2c_params(struct msm_actuator_ctrl_t *a_ctrl,
 					i2c_byte2 = (value & 0xFF00) >> 8;
 					CDBG("byte1:0x%x, byte2:0x%x\n",
 						i2c_byte1, i2c_byte2);
+					if (a_ctrl->i2c_tbl_index >
+						a_ctrl->total_steps) {
+						pr_err("failed:i2c table index out of bound\n");
+						break;
+					}
 					i2c_tbl[a_ctrl->i2c_tbl_index].
 						reg_addr = i2c_byte1;
 					i2c_tbl[a_ctrl->i2c_tbl_index].
@@ -432,11 +436,15 @@ static int32_t msm_actuator_init_focus(struct msm_actuator_ctrl_t *a_ctrl,
 			pr_err("Unsupport i2c_operation: %d\n",
 				settings[i].i2c_operation);
 			break;
+		}
 
 		if (0 != settings[i].delay)
 			msleep(settings[i].delay);
 
-		if (rc < 0)
+		if (rc < 0) {
+			pr_err("%s:%d fail addr = 0X%X, data = 0X%X, dt = %d",
+				__func__, __LINE__, settings[i].reg_addr,
+				settings[i].reg_data, settings[i].data_type);
 			break;
 		}
 	}
@@ -796,8 +804,10 @@ static int32_t msm_actuator_bivcm_move_focus(
 				[a_ctrl->curr_region_index],
 				sign_dir,
 				target_lens_pos);
-			if (rc < 0)
+			if (rc < 0) {
+				kfree(ringing_params_kernel);
 				return rc;
+			}
 			curr_lens_pos = target_lens_pos;
 
 			a_ctrl->curr_region_index += sign_dir;
@@ -834,7 +844,9 @@ static int32_t msm_actuator_park_lens(struct msm_actuator_ctrl_t *a_ctrl)
 	if (a_ctrl->park_lens.max_step > a_ctrl->max_code_size)
 		a_ctrl->park_lens.max_step = a_ctrl->max_code_size;
 
+#ifndef CONFIG_MACH_XIAOMI_KENZO
 	next_lens_pos = a_ctrl->step_position_table[a_ctrl->curr_step_pos];
+#endif
 	while (next_lens_pos) {
 		/* conditions which help to reduce park lens time */
 		if (next_lens_pos > (a_ctrl->park_lens.max_step *
@@ -854,9 +866,9 @@ static int32_t msm_actuator_park_lens(struct msm_actuator_ctrl_t *a_ctrl)
 				PARK_LENS_SMALL_STEP);
 		} else {
 			next_lens_pos = (next_lens_pos >
-				a_ctrl->park_lens.max_step/4) ?
+				a_ctrl->park_lens.max_step) ?
 				(next_lens_pos - a_ctrl->park_lens.
-				max_step/4) : 0;
+				max_step) : 0;
 		}
 		a_ctrl->func_tbl->actuator_parse_i2c_params(a_ctrl,
 			next_lens_pos, a_ctrl->park_lens.hw_params,
@@ -1076,6 +1088,9 @@ static int32_t msm_actuator_set_default_focus(
 	int32_t rc = 0;
 	CDBG("Enter\n");
 
+#ifdef CONFIG_MACH_XIAOMI_KENZO
+	move_params->dest_step_pos += 150;
+#endif
 	if (a_ctrl->curr_step_pos != 0)
 		rc = a_ctrl->func_tbl->actuator_move_focus(a_ctrl, move_params);
 	CDBG("Exit\n");
@@ -1440,6 +1455,7 @@ static int32_t msm_actuator_config(struct msm_actuator_ctrl_t *a_ctrl,
 
 	if (cdata->cfgtype != CFG_ACTUATOR_INIT &&
 		cdata->cfgtype != CFG_ACTUATOR_POWERUP &&
+		cdata->cfgtype != CFG_ACTUATOR_POWERDOWN &&
 		a_ctrl->actuator_state == ACT_DISABLE_STATE) {
 		pr_err("actuator disabled %d\n", rc);
 		mutex_unlock(a_ctrl->actuator_mutex);
@@ -1630,7 +1646,6 @@ static long msm_actuator_subdev_do_ioctl(
 
 	switch (cmd) {
 	case VIDIOC_MSM_ACTUATOR_CFG32:
-		cmd = VIDIOC_MSM_ACTUATOR_CFG;
 		switch (u32->cfgtype) {
 		case CFG_SET_ACTUATOR_INFO:
 			actuator_data.cfgtype = u32->cfgtype;
@@ -1748,11 +1763,14 @@ static long msm_actuator_subdev_do_ioctl(
 		}
 	}
 
-	rc = msm_actuator_subdev_ioctl(sd, cmd, parg);
+	if (cmd == VIDIOC_MSM_ACTUATOR_CFG32)
+		rc = msm_actuator_subdev_ioctl(sd, VIDIOC_MSM_ACTUATOR_CFG, parg);
+	else
+		rc = msm_actuator_subdev_ioctl(sd, cmd, parg);
 
 	switch (cmd) {
 
-	case VIDIOC_MSM_ACTUATOR_CFG:
+	case VIDIOC_MSM_ACTUATOR_CFG32:
 
 		switch (u32->cfgtype) {
 
@@ -1787,6 +1805,8 @@ static int32_t msm_actuator_power_up(struct msm_actuator_ctrl_t *a_ctrl)
 		return rc;
 	}
 
+	/* VREG needs some delay to power up */
+	usleep_range(2000, 3000);
 	a_ctrl->actuator_state = ACT_ENABLE_STATE;
 
 	CDBG("Exit\n");

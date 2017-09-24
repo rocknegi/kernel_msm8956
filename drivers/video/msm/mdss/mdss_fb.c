@@ -51,9 +51,6 @@
 #include <linux/qcom_iommu.h>
 #include <linux/msm_iommu_domains.h>
 
-#ifdef CONFIG_MACH_XIAOMI_KENZO
-#include "mdss_dsi.h"
-#endif
 #include "mdss_fb.h"
 #include "mdss_mdp_splash_logo.h"
 #define CREATE_TRACE_POINTS
@@ -788,11 +785,6 @@ static ssize_t mdss_fb_get_dfps_mode(struct device *dev,
 
 	return ret;
 }
-
-#ifdef CONFIG_MACH_XIAOMI_KENZO
-extern void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
-			struct dsi_panel_cmds *pcmds);
-#endif
 
 static DEVICE_ATTR(msm_fb_type, S_IRUGO, mdss_fb_get_type, NULL);
 static DEVICE_ATTR(msm_fb_split, S_IRUGO | S_IWUSR, mdss_fb_show_split,
@@ -1573,6 +1565,7 @@ static int mdss_fb_blank_unblank(struct msm_fb_data_type *mfd)
 				cur_panel_dead)
 				mdss_fb_set_backlight(mfd, mfd->unset_bl_level);
 #endif
+
 			/*
 			 * it blocks the backlight update between unblank and
 			 * first kickoff to avoid backlight turn on before black
@@ -3162,11 +3155,8 @@ static int __mdss_fb_display_thread(void *data)
 		ret = wait_event_interruptible(mfd->commit_wait_q,
 				(atomic_read(&mfd->commits_pending) ||
 				 kthread_should_stop()));
-
-		if (ret) {
-			pr_info("%s: interrupted", __func__);
+		if (ret)
 			continue;
-		}
 
 		if (kthread_should_stop())
 			break;

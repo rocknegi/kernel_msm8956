@@ -593,8 +593,8 @@ static void mmc_wait_data_done(struct mmc_request *mrq)
 	struct mmc_context_info *context_info = &mrq->host->context_info;
 
 	spin_lock_irqsave(&context_info->lock, flags);
-	mrq->host->context_info.is_done_rcv = true;
-	wake_up_interruptible(&mrq->host->context_info.wait);
+	context_info->is_done_rcv = true;
+	wake_up_interruptible(&context_info->wait);
 	spin_unlock_irqrestore(&context_info->lock, flags);
 }
 
@@ -1006,6 +1006,8 @@ int mmc_cmdq_halt(struct mmc_host *host, bool halt)
 	mmc_host_clk_hold(host);
 	if (host->cmdq_ops->halt) {
 		err = host->cmdq_ops->halt(host, halt);
+		if (!err && host->ops->notify_halt)
+			host->ops->notify_halt(host, halt);
 		if (!err && halt)
 			mmc_host_set_halt(host);
 		else if (!err && !halt)

@@ -28,13 +28,6 @@
 #define DT_CMD_HDR 6
 #define MIN_REFRESH_RATE 48
 #define DEFAULT_MDP_TRANSFER_TIME 14000
-#ifdef CONFIG_MACH_XIAOMI_KENZO
-#define WRITE_REGISTER
-#define LCM_SUPPORT_READ_VERSION
-#ifdef LCM_SUPPORT_READ_VERSION
-char g_lcm_id[128];
-#endif
-#endif
 
 DEFINE_LED_TRIGGER(bl_led_trigger);
 
@@ -159,6 +152,7 @@ u32 mdss_dsi_panel_cmd_read(struct mdss_dsi_ctrl_pdata *ctrl, char cmd0,
 }
 
 static void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
+
 			struct dsi_panel_cmds *pcmds)
 {
 	struct dcs_cmd_req cmdreq;
@@ -217,33 +211,6 @@ static void mdss_dsi_panel_bklt_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int level)
 
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
 }
-
-#ifdef CONFIG_MACH_XIAOMI_KENZO
-static char lcd_reg1[2] = {0x0, 0x0};	/* DTYPE_DCS_WRITE1 */
-static struct dsi_cmd_desc lcd_write_register = {
-	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(lcd_reg1)},
-	lcd_reg1
-};
-
-static void mdss_dsi_write_reg_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int cmd, int level)
-{
-	struct dcs_cmd_req cmdreq;
-
-	pr_debug("%s: level=%d\n", __func__, level);
-
-	lcd_reg1[0] = (unsigned char)cmd;
-	lcd_reg1[1] = (unsigned char)level;
-
-	memset(&cmdreq, 0, sizeof(cmdreq));
-	cmdreq.cmds = &lcd_write_register;
-	cmdreq.cmds_cnt = 1;
-	cmdreq.flags = CMD_REQ_COMMIT | CMD_CLK_CTRL;
-	cmdreq.rlen = 0;
-	cmdreq.cb = NULL;
-
-	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
-}
-#endif
 
 static int mdss_dsi_request_gpios(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 {
@@ -646,18 +613,12 @@ static void mdss_dsi_panel_switch_mode(struct mdss_panel_data *pdata,
 	return;
 }
 
-#ifdef CONFIG_MACH_XIAOMI_KENZO
-struct mdss_dsi_ctrl_pdata *w_reg;
-#endif
-
 static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 							u32 bl_level)
 {
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	struct mdss_dsi_ctrl_pdata *sctrl = NULL;
-#ifdef CONFIG_MACH_XIAOMI_KENZO
-	static u32 old_bl_level;
-#endif
+
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
 		return;
@@ -665,9 +626,6 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 
 	ctrl_pdata = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
-#ifdef CONFIG_MACH_XIAOMI_KENZO
-	w_reg = ctrl_pdata;
-#endif
 
 	/*
 	 * Some backlight controllers specify a minimum duty cycle
@@ -714,10 +672,6 @@ static void mdss_dsi_panel_bl_ctrl(struct mdss_panel_data *pdata,
 			__func__);
 		break;
 	}
-#ifdef CONFIG_MACH_XIAOMI_KENZO
-	old_bl_level = bl_level;
-#endif
-
 }
 
 static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
@@ -1674,11 +1628,6 @@ static int mdss_dsi_parse_panel_features(struct device_node *np,
 				"qcom,dcs-cmd-by-left");
 	}
 
-#ifdef CONFIG_MACH_XIAOMI_KENZO
-	pinfo->sharp_panel_module = of_property_read_bool(np,
-		"qcom,sharp-panel");
-#endif
-
 	pinfo->ulps_feature_enabled = of_property_read_bool(np,
 		"qcom,ulps-enabled");
 	pr_info("%s: ulps feature %s\n", __func__,
@@ -2220,7 +2169,37 @@ static void mdss_dsi_set_prim_panel(struct mdss_dsi_ctrl_pdata *ctrl_pdata)
 }
 
 #ifdef CONFIG_MACH_XIAOMI_KENZO
+
+#define WRITE_REGISTER
+#define LCM_SUPPORT_READ_VERSION
+
 #ifdef WRITE_REGISTER
+static char lcd_reg1[2] = {0x0, 0x0};	/* DTYPE_DCS_WRITE1 */
+static struct dsi_cmd_desc lcd_write_register = {
+	{DTYPE_DCS_WRITE1, 1, 0, 0, 1, sizeof(lcd_reg1)},
+	lcd_reg1
+};
+
+static void mdss_dsi_write_reg_dcs(struct mdss_dsi_ctrl_pdata *ctrl, int cmd, int level)
+{
+	struct dcs_cmd_req cmdreq;
+
+	pr_debug("%s: level=%d\n", __func__, level);
+
+	lcd_reg1[0] = (unsigned char)cmd;
+	lcd_reg1[1] = (unsigned char)level;
+
+	memset(&cmdreq, 0, sizeof(cmdreq));
+	cmdreq.cmds = &lcd_write_register;
+	cmdreq.cmds_cnt = 1;
+	cmdreq.flags = CMD_REQ_COMMIT | CMD_CLK_CTRL;
+	cmdreq.rlen = 0;
+	cmdreq.cb = NULL;
+
+	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
+}
+
+struct mdss_dsi_ctrl_pdata *w_reg;
 
 static ssize_t r_lcd_write_register(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
@@ -2233,15 +2212,15 @@ static ssize_t r_lcd_write_register(struct device *dev,
 	ret = kstrtoul(buf, 16, &reg);
 	if (ret)
 		return ret;
+
 	cmd = (reg&0xff00) >> 8;
 	data = reg&0x00ff;
-	printk("tsx_cmd=%ld,data=%ld,reg=%ld\n", cmd, data, reg);
+	pr_debug("tsx_cmd=%ld, data=%ld, reg=%ld\n", cmd, data, reg);
 	mdss_dsi_write_reg_dcs(w_reg, cmd, data);
 
 	return size;
 }
 static DEVICE_ATTR(lcd_register, 0644, NULL, r_lcd_write_register);
-
 
 static struct kobject *msm_lcd_write_reg;
 
@@ -2251,7 +2230,7 @@ static int msm_lcd_write_reg_create_sysfs(void)
 
 	msm_lcd_write_reg = kobject_create_and_add("android_write_lcd", NULL);
 	if (msm_lcd_write_reg == NULL) {
-		pr_info("msm_lcd_name_create_sysfs	failed!\n");
+		pr_info("msm_lcd_name_create_sysfs failed!\n");
 		ret = -ENOMEM;
 		return ret ;
 	}
@@ -2263,9 +2242,11 @@ static int msm_lcd_write_reg_create_sysfs(void)
 	}
 	return 0 ;
 }
-
 #endif
+
 #ifdef LCM_SUPPORT_READ_VERSION
+char g_lcm_id[128];
+
 static int mdss_panel_parse_panel_name(struct device_node *node)
 {
 	const char *name;
@@ -2275,6 +2256,7 @@ static int mdss_panel_parse_panel_name(struct device_node *node)
 	strcpy(g_lcm_id, name);
 	return 0;
 }
+
 static ssize_t msm_fb_lcd_name(struct device *dev,
 				  struct device_attribute *attr, char *buf)
 {
@@ -2285,16 +2267,17 @@ static ssize_t msm_fb_lcd_name(struct device *dev,
 
 	return ret;
 }
-
 static DEVICE_ATTR(lcd_name, 0644, msm_fb_lcd_name, NULL);
+
 static struct kobject *msm_lcd_name;
+
 static int msm_lcd_name_create_sysfs(void)
 {
 	int ret ;
 
 	msm_lcd_name = kobject_create_and_add("android_lcd", NULL);
 	if (msm_lcd_name == NULL) {
-		pr_info("msm_lcd_name_create_sysfs	failed!\n");
+		pr_info("msm_lcd_name_create_sysfs failed!\n");
 		ret = -ENOMEM;
 		return ret ;
 	}
@@ -2335,12 +2318,12 @@ int mdss_dsi_panel_init(struct device_node *node,
 	}
 
 #ifdef CONFIG_MACH_XIAOMI_KENZO
-	#ifdef LCM_SUPPORT_READ_VERSION
-		rc = mdss_panel_parse_panel_name(node);
-		if (rc) {
-			pr_err("fail to parse panel label\n");
-			return rc;
-		}
+#ifdef LCM_SUPPORT_READ_VERSION
+	rc = mdss_panel_parse_panel_name(node);
+	if (rc) {
+		pr_err("fail to parse panel label\n");
+		return rc;
+	}
 #endif
 #endif
 
@@ -2361,13 +2344,16 @@ int mdss_dsi_panel_init(struct device_node *node,
 	ctrl_pdata->low_power_config = mdss_dsi_panel_low_power_config;
 	ctrl_pdata->panel_data.set_backlight = mdss_dsi_panel_bl_ctrl;
 	ctrl_pdata->switch_mode = mdss_dsi_panel_switch_mode;
+
 #ifdef CONFIG_MACH_XIAOMI_KENZO
 #ifdef LCM_SUPPORT_READ_VERSION
 	msm_lcd_name_create_sysfs();
 #endif
 #ifdef WRITE_REGISTER
+	w_reg = ctrl_pdata;
 	msm_lcd_write_reg_create_sysfs();
 #endif
 #endif
+
 	return 0;
 }

@@ -1,7 +1,6 @@
 /* rc-main.c - Remote Controller core module
  *
  * Copyright (C) 2009-2010 by Mauro Carvalho Chehab <mchehab@redhat.com>
- * Copyright (C) 2016 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -703,6 +702,7 @@ EXPORT_SYMBOL_GPL(rc_keydown_notimeout);
 static int ir_open(struct input_dev *idev)
 {
 	struct rc_dev *rdev = input_get_drvdata(idev);
+#ifdef CONFIG_MACH_XIAOMI
 	int rc = 0;
 
 	mutex_lock(&rdev->lock);
@@ -713,18 +713,26 @@ static int ir_open(struct input_dev *idev)
 	mutex_unlock(&rdev->lock);
 
 	return rc;
+#else
+	return rdev->open(rdev);
+#endif
 }
 
 static void ir_close(struct input_dev *idev)
 {
 	struct rc_dev *rdev = input_get_drvdata(idev);
 
-	 if (rdev) {
+#ifdef CONFIG_MACH_XIAOMI
+	if (rdev) {
 		mutex_lock(&rdev->lock);
 		if (!--rdev->open_count)
 			rdev->close(rdev);
 		mutex_unlock(&rdev->lock);
 	}
+#else
+	 if (rdev)
+		rdev->close(rdev);
+#endif
 }
 
 /* class for /sys/class/rc */

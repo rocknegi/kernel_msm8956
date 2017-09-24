@@ -1714,8 +1714,6 @@ static void qpnp_hap_td_enable(struct timed_output_dev *dev, int value)
 	schedule_work(&hap->td_work);
 }
 
-
-
 void set_vibrate(int value)
 {
 	qpnp_hap_td_enable(&ghap->timed_dev, value);

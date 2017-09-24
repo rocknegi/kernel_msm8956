@@ -92,7 +92,6 @@
 2 Add MTK supprot without test
 */
 #include <linux/module.h>
-#include <linux/proc_fs.h>
 #include <linux/init.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
@@ -1745,11 +1744,6 @@ static void mxt_proc_t9_message(struct mxt_data *data, u8 *message)
 		} else {
 			tool = MT_TOOL_FINGER;
 		}
-
-#ifdef CONFIG_WAKE_GESTURES
-		if (data->suspended)
-			x += 5000;
-#endif
 
 		/* Touch active */
 		input_mt_report_slot_state(input_dev, tool, 1);
@@ -5223,40 +5217,6 @@ static const struct attribute_group mxt_attr_group = {
 	.attrs = mxt_attrs,
 };
 
-static int mxt_proc_init(struct mxt_data *data)
-{
-	int ret = 0;
-	char *buf, *path = NULL;
-	char *key_disabler_sysfs_node;
-	struct proc_dir_entry *proc_entry_tp = NULL;
-	struct proc_dir_entry *proc_symlink_tmp  = NULL;
-
-	buf = kzalloc(sizeof(struct mxt_data), GFP_KERNEL);
-	if (buf)
-		path = "/devices/soc.0/78b8000.i2c/i2c-4/4-004a";
-
-	proc_entry_tp = proc_mkdir("touchpanel", NULL);
-	if (proc_entry_tp == NULL) {
-		dev_err(&data->client->dev, "atmel_mxt_ts: Couldn't create touchpanel dir in procfs\n");
-		ret = -ENOMEM;
-	}
-
-	key_disabler_sysfs_node = kzalloc(sizeof(struct mxt_data), GFP_KERNEL);
-	if (key_disabler_sysfs_node)
-		sprintf(key_disabler_sysfs_node, "/sys%s/%s", path, "keypad_mode");
-	proc_symlink_tmp = proc_symlink("capacitive_keys_enable",
-			proc_entry_tp, key_disabler_sysfs_node);
-	if (proc_symlink_tmp == NULL) {
-		dev_err(&data->client->dev, "atmel_mxt_ts: Couldn't create capacitive_keys_enable symlink\n");
-		ret = -ENOMEM;
-	}
-
-	kfree(buf);
-	kfree(key_disabler_sysfs_node);
-
-	return ret;
-}
-
 static void mxt_reset_slots(struct mxt_data *data)
 {
 	struct input_dev *input_dev = data->input_dev;
@@ -5289,7 +5249,7 @@ static void mxt_start(struct mxt_data *data, bool resume)
 
 	dev_info(dev, "mxt_start\n");
 #ifdef CONFIG_WAKE_GESTURES
-	if (s2w_switch || dt2w_switch)
+	if (resume && device_may_wakeup(dev) && (s2w_switch || dt2w_switch))
 		board_disable_irq_wake(data->pdata, data->irq);
 
 	if (dt2w_switch_changed) {
@@ -5378,9 +5338,14 @@ static void mxt_stop(struct mxt_data *data, bool suspend)
 		mxt_regulator_disable(data);
 	else {
 #ifdef CONFIG_WAKE_GESTURES
-		if (s2w_switch || dt2w_switch) {
-			board_enable_irq_wake(data->pdata, data->irq);
+		if (suspend && device_may_wakeup(dev) && (s2w_switch || dt2w_switch)) {
 			mxt_set_t7_power_cfg(data, MXT_POWER_CFG_WAKE_GESTURES);
+			mxt_process_messages_until_invalid(data);
+			if (atomic_read(&data->depth) <= 0) {
+				atomic_inc(&data->depth);
+				board_enable_irq(pdata, data->irq);
+			}
+			board_enable_irq_wake(data->pdata, data->irq);
 		} else
 #endif
 		mxt_set_t7_power_cfg(data, MXT_POWER_CFG_DEEPSLEEP);
@@ -5897,8 +5862,6 @@ static int  mxt_probe(struct i2c_client *client,
 		goto err_free_irq;
 	}
 
-	mxt_proc_init(data);
-
 	dev_info(&client->dev, "Mxt probe finished18\n");
 	error = sysfs_create_group(&client->dev.kobj, &mxt_attr_group);
 	if (error) {
@@ -5941,6 +5904,7 @@ static int  mxt_probe(struct i2c_client *client,
 	dev_info(&client->dev, "Mxt probe finished\n");
 #ifdef CONFIG_WAKE_GESTURES
 	gl_data = data;
+	device_init_wakeup(&client->dev, 1);
 #endif
 
 	return 0;

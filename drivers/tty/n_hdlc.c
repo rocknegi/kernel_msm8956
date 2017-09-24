@@ -156,10 +156,8 @@ struct n_hdlc {
 /*
  * HDLC buffer list manipulation functions
  */
-
 static void n_hdlc_buf_return(struct n_hdlc_buf_list *buf_list,
 						struct n_hdlc_buf *buf);
-
 static void n_hdlc_buf_put(struct n_hdlc_buf_list *list,
 			   struct n_hdlc_buf *buf);
 static struct n_hdlc_buf *n_hdlc_buf_get(struct n_hdlc_buf_list *list);
@@ -849,22 +847,12 @@ static struct n_hdlc *n_hdlc_alloc(void)
 	spin_lock_init(&n_hdlc->tx_free_buf_list.spinlock);
 	spin_lock_init(&n_hdlc->rx_buf_list.spinlock);
 	spin_lock_init(&n_hdlc->tx_buf_list.spinlock);
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 030e0b5... tty: n_hdlc: get rid of racy n_hdlc.tbuf
 
 	INIT_LIST_HEAD(&n_hdlc->rx_free_buf_list.list);
 	INIT_LIST_HEAD(&n_hdlc->tx_free_buf_list.list);
 	INIT_LIST_HEAD(&n_hdlc->rx_buf_list.list);
 	INIT_LIST_HEAD(&n_hdlc->tx_buf_list.list);
 
-<<<<<<< HEAD
-=======
-	
->>>>>>> a9511e7... TTY: n_hdlc, fix lockdep false positive
-=======
->>>>>>> 030e0b5... tty: n_hdlc: get rid of racy n_hdlc.tbuf
 	/* allocate free rx buffer list */
 	for(i=0;i<DEFAULT_RX_BUF_COUNT;i++) {
 		buf = kmalloc(N_HDLC_BUF_SIZE, GFP_KERNEL);
@@ -892,10 +880,6 @@ static struct n_hdlc *n_hdlc_alloc(void)
 }	/* end of n_hdlc_alloc() */
 
 /**
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
->>>>>>> 030e0b5... tty: n_hdlc: get rid of racy n_hdlc.tbuf
  * n_hdlc_buf_return - put the HDLC buffer after the head of the specified list
  * @buf_list - pointer to the buffer list
  * @buf - pointer to the buffer
@@ -914,11 +898,6 @@ static void n_hdlc_buf_return(struct n_hdlc_buf_list *buf_list,
 }
 
 /**
-<<<<<<< HEAD
-=======
->>>>>>> a9511e7... TTY: n_hdlc, fix lockdep false positive
-=======
->>>>>>> 030e0b5... tty: n_hdlc: get rid of racy n_hdlc.tbuf
  * n_hdlc_buf_put - add specified HDLC buffer to tail of specified list
  * @buf_list - pointer to buffer list
  * @buf	- pointer to buffer

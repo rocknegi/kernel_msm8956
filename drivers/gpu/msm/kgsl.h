@@ -26,6 +26,7 @@
 #include <linux/mm.h>
 #include <linux/dma-attrs.h>
 #include <linux/uaccess.h>
+#include <linux/kthread.h>
 
 /* The number of memstore arrays limits the number of contexts allowed.
  * If more contexts are needed, update multiple for MEMSTORE_SIZE
@@ -96,6 +97,8 @@ struct kgsl_driver {
 		uint64_t mapped_max;
 	} stats;
 	unsigned int full_cache_threshold;
+	struct kthread_worker worker;
+	struct task_struct *worker_thread;
 };
 
 extern struct kgsl_driver kgsl_driver;
@@ -128,6 +131,8 @@ struct kgsl_memdesc_ops {
 #define KGSL_MEMDESC_PRIVILEGED BIT(6)
 /* The memdesc is TZ locked content protection */
 #define KGSL_MEMDESC_TZ_LOCKED BIT(7)
+/* The memdesc is allocated through contiguous memory */
+#define KGSL_MEMDESC_CONTIG BIT(8)
 
 /**
  * struct kgsl_memdesc - GPU memory object descriptor
@@ -231,7 +236,7 @@ struct kgsl_event {
 	void *priv;
 	struct list_head node;
 	unsigned int created;
-	struct work_struct work;
+	struct kthread_work work;
 	int result;
 	struct kgsl_event_group *group;
 };
@@ -329,8 +334,6 @@ struct kgsl_mem_entry *kgsl_sharedmem_find_region(
 
 struct kgsl_mem_entry * __must_check
 kgsl_sharedmem_find_id(struct kgsl_process_private *process, unsigned int id);
-
-void kgsl_get_memory_usage(char *str, size_t len, uint64_t memflags);
 
 extern const struct dev_pm_ops kgsl_pm_ops;
 

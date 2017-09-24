@@ -254,6 +254,10 @@ static int kgsl_iommu_pdev_probe(struct platform_device *pdev)
 	if (result)
 		goto err;
 
+	if (of_property_read_u32(pdev->dev.of_node,
+			"qcom,secure_align_mask", &data->secure_align_mask))
+		data->secure_align_mask = 0xfff;
+
 	if (!data->iommu_ctx_count) {
 		KGSL_CORE_ERR(
 			"dt: KGSL IOMMU context bank count cannot be zero\n");
@@ -646,7 +650,6 @@ void adreno_cp_callback(struct adreno_device *adreno_dev, int bit)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
 
-	queue_work(device->work_queue, &device->event_work);
 	adreno_dispatcher_schedule(device);
 }
 
@@ -656,10 +659,20 @@ static irqreturn_t adreno_irq_handler(struct kgsl_device *device)
 	struct adreno_gpudev *gpudev = ADRENO_GPU_DEVICE(adreno_dev);
 	struct adreno_irq *irq_params = gpudev->irq;
 	irqreturn_t ret = IRQ_NONE;
-	unsigned int status = 0, tmp = 0;
+	unsigned int status = 0, tmp = 0, int_bit;
 	int i;
 
 	adreno_readreg(adreno_dev, ADRENO_REG_RBBM_INT_0_STATUS, &status);
+
+	/*
+	 * Clear all the interrupt bits but ADRENO_INT_RBBM_AHB_ERROR. Because
+	 * even if we clear it here, it will stay high until it is cleared
+	 * in its respective handler. Otherwise, the interrupt handler will
+	 * fire again.
+	 */
+	int_bit = ADRENO_INT_BIT(adreno_dev, ADRENO_INT_RBBM_AHB_ERROR);
+	adreno_writereg(adreno_dev, ADRENO_REG_RBBM_INT_CLEAR_CMD,
+				status & ~int_bit);
 
 	/* Loop through all set interrupts and call respective handlers */
 	for (tmp = status, i = 0; tmp &&
@@ -677,9 +690,14 @@ static irqreturn_t adreno_irq_handler(struct kgsl_device *device)
 
 	gpudev->irq_trace(adreno_dev, status);
 
-	if (status)
+	/*
+	 * Clear ADRENO_INT_RBBM_AHB_ERROR bit after this interrupt has been
+	 * cleared in its respective handler
+	 */
+	if (status & int_bit)
 		adreno_writereg(adreno_dev, ADRENO_REG_RBBM_INT_CLEAR_CMD,
-				status);
+				int_bit);
+
 	return ret;
 
 }
@@ -1182,7 +1200,7 @@ static int adreno_of_get_pdata(struct platform_device *pdev)
 
 	if (of_property_read_u32(pdev->dev.of_node, "qcom,idle-timeout",
 		&pdata->idle_timeout))
-		pdata->idle_timeout = 80;
+		pdata->idle_timeout = HZ/12;
 
 	pdata->strtstp_sleepwake = of_property_read_bool(pdev->dev.of_node,
 						"qcom,strtstp-sleepwake");
@@ -1940,6 +1958,8 @@ static int adreno_stop(struct kgsl_device *device)
 
 	/* Save physical performance counter values before GPU power down*/
 	adreno_perfcounter_save(adreno_dev);
+
+	adreno_vbif_clear_pending_transactions(device);
 
 	kgsl_mmu_stop(&device->mmu);
 	kgsl_cffdump_close(device);
